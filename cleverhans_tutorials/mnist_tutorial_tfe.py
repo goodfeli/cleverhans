@@ -44,6 +44,7 @@ tfe = tf.contrib.eager
 
 FLAGS = flags.FLAGS
 
+NB_FILTERS = 64
 NB_EPOCHS = 6
 BATCH_SIZE = 128
 LEARNING_RATE = .001
