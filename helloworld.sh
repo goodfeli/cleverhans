@@ -1,2 +1,2 @@
 #!/bin/sh
-echo "Hello, world!"
+echo "Screaming into the void"
