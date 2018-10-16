@@ -242,27 +242,6 @@ class TestFastGradientMethod(CleverHansTest):
     self.assertClose(np.min(x_adv), -0.2)
     self.assertClose(np.max(x_adv), 0.1)
 
-  def test_generate_np_caches_graph_computation_for_eps_clip_or_xi(self):
-
-    x_val = np.random.rand(1, 2)
-    x_val = np.array(x_val, dtype=np.float32)
-
-    self.attack.generate_np(x_val, eps=.3, num_iterations=10,
-                            clip_max=-5.0, clip_min=-5.0,
-                            xi=1e-6)
-
-    old_grads = tf.gradients
-
-    def fn(*x, **y):
-      raise RuntimeError()
-
-    tf.gradients = fn
-
-    self.attack.generate_np(x_val, eps=.2, num_iterations=10,
-                            clip_max=-4.0, clip_min=-4.0,
-                            xi=1e-5)
-
-    tf.gradients = old_grads
 
 
 class TestSPSA(CleverHansTest):
@@ -288,6 +267,7 @@ class TestSPSA(CleverHansTest):
     x_adv_op = self.attack.generate(
         x_input, y=y_label,
         epsilon=.5, num_steps=100, batch_size=64, spsa_iters=1,
+        clip_min=0., clip_max=1.
     )
 
     all_x_adv = []
@@ -308,20 +288,21 @@ class TestSPSA(CleverHansTest):
     x_val = np.random.rand(n_samples, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    feed_labs = np.random.randint(0, 2, n_samples)
+    feed_labs = np.random.randint(0, 2, n_samples, dtype='int32')
 
     all_x_adv = []
     for i in range(n_samples):
       x_adv_np = self.attack.generate_np(
           np.expand_dims(x_val[i], axis=0),
           y=np.expand_dims(feed_labs[i], axis=0),
-          epsilon=.5, num_steps=100, batch_size=64, spsa_iters=1,
+          eps=.5, nb_iter=100, spsa_samples=64, spsa_iters=1,
+          clip_min=0., clip_max=1.
       )
       all_x_adv.append(x_adv_np[0])
 
     x_adv = np.vstack(all_x_adv)
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
-    self.assertTrue(np.mean(feed_labs == new_labs) < 0.1)
+    self.assertLess(np.mean(feed_labs == new_labs), 0.1)
 
   def test_attack_strength_np_batched(self):
     # Same test as test_attack_strength_np, but batched
@@ -329,14 +310,13 @@ class TestSPSA(CleverHansTest):
     x_val = np.random.rand(n_samples, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    feed_labs = np.random.randint(0, 2, n_samples)
+    feed_labs = np.random.randint(0, 2, n_samples, dtype='int32')
     x_adv = self.attack.generate_np(
-        x_val, y=feed_labs, epsilon=.5, num_steps=100, batch_size=64,
-        spsa_iters=1)
+        x_val, y=feed_labs, eps=.5, nb_iter=100, spsa_samples=64,
+        spsa_iters=1, clip_min=0., clip_max=1.)
 
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
-    self.assertTrue(np.mean(feed_labs == new_labs) < 0.1)
-
+    self.assertLess(np.mean(feed_labs == new_labs), 0.1)
 
 class TestBasicIterativeMethod(TestFastGradientMethod):
   def setUp(self):
@@ -432,9 +412,9 @@ class TestMomentumIterativeMethod(TestBasicIterativeMethod):
     x_val = np.random.rand(100, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    for dacay_factor in [0.0, 0.5, 1.0]:
+    for decay_factor in [0.0, 0.5, 1.0]:
       x_adv = self.attack.generate_np(x_val, eps=0.5, ord=np.inf,
-                                      dacay_factor=dacay_factor,
+                                      decay_factor=decay_factor,
                                       clip_min=-5.0, clip_max=5.0)
 
       delta = np.max(np.abs(x_adv - x_val), axis=1)
