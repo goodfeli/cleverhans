@@ -8,6 +8,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import unittest
 import numpy as np
+from numpy import float32
 
 from cleverhans.devtools.checks import CleverHansTest
 
@@ -173,7 +174,8 @@ class TestFastGradientMethod(CleverHansTest):
     x_val = np.array(x_val, dtype=np.float32)
 
     x_adv = self.attack.generate_np(x_val, eps=eps, ord=ord,
-                                    clip_min=-5, clip_max=5, **kwargs)
+                                    clip_min=float32(-5), clip_max=float32(5),
+                                    **kwargs)
     if ord == np.inf:
       delta = np.max(np.abs(x_adv - x_val), axis=1)
     elif ord == 1:
@@ -185,6 +187,7 @@ class TestFastGradientMethod(CleverHansTest):
 
   def help_generate_np_gives_adversarial_example(self, ord, eps=.5,
                                                  **kwargs):
+    eps = float32(eps)
     x_val, x_adv, delta = self.generate_adversarial_examples_np(ord, eps,
                                                                 **kwargs)
     self.assertClose(delta, eps)
@@ -217,11 +220,11 @@ class TestFastGradientMethod(CleverHansTest):
 
   def test_targeted_generate_np_gives_adversarial_example(self):
     random_labs = np.random.random_integers(0, 1, 100)
-    random_labs_one_hot = np.zeros((100, 2))
+    random_labs_one_hot = np.zeros((100, 2), dtype='int32')
     random_labs_one_hot[np.arange(100), random_labs] = 1
 
     _, x_adv, delta = self.generate_adversarial_examples_np(
-        eps=.5, ord=np.inf, y_target=random_labs_one_hot)
+        eps=float32(.5), ord=np.inf, y_target=random_labs_one_hot)
 
     self.assertClose(delta, 0.5)
 
@@ -233,8 +236,10 @@ class TestFastGradientMethod(CleverHansTest):
     x_val = np.array(x_val, dtype=np.float32)
 
     for eps in [0.1, 0.2, 0.3, 0.4]:
+      eps = np.array(eps, dtype='float32')
       x_adv = self.attack.generate_np(x_val, eps=eps, ord=np.inf,
-                                      clip_min=-5.0, clip_max=5.0)
+                                      clip_min=float32(-5.0),
+                                      clip_max=float32(5.0))
 
       delta = np.max(np.abs(x_adv - x_val), axis=1)
       self.assertClose(delta, eps)
@@ -273,6 +278,7 @@ class TestSPSA(CleverHansTest):
     x_adv_op = self.attack.generate(
         x_input, y=y_label,
         epsilon=.5, num_steps=100, batch_size=64, spsa_iters=1,
+        clip_min=0., clip_max=1.
     )
 
     all_x_adv = []
@@ -293,19 +299,20 @@ class TestSPSA(CleverHansTest):
     x_val = np.random.rand(n_samples, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    feed_labs = np.random.randint(0, 2, n_samples)
+    feed_labs = np.random.randint(0, 2, n_samples, dtype='int32')
 
     all_x_adv = []
     for i in range(n_samples):
       x_adv_np = self.attack.generate_np(
           np.expand_dims(x_val[i], axis=0),
           y=np.expand_dims(feed_labs[i], axis=0),
-          epsilon=.5, num_steps=100, batch_size=64, spsa_iters=1)
+          eps=.5, num_steps=100, spsa_samples=64, spsa_iters=1,
+          clip_min=0., clip_max=1)
       all_x_adv.append(x_adv_np[0])
 
     x_adv = np.vstack(all_x_adv)
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
-    self.assertTrue(np.mean(feed_labs == new_labs) < 0.1)
+    self.assertLess(np.mean(feed_labs == new_labs), 0.1)
 
   def test_attack_strength_np_batched(self):
     # Same test as test_attack_strength_np, but batched
@@ -313,14 +320,14 @@ class TestSPSA(CleverHansTest):
     x_val = np.random.rand(n_samples, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    feed_labs = np.random.randint(0, 2, n_samples)
+    feed_labs = np.random.randint(0, 2, n_samples, dtype='int32')
     x_adv = self.attack.generate_np(
-        x_val, y=feed_labs, epsilon=.5, num_steps=100, batch_size=64,
-        spsa_iters=1)
+        x_val, y=feed_labs.astype('int32'), eps=np.array(.5, dtype='float32'),
+        num_steps=100, spsa_samples=64, spsa_iters=1, clip_min=float32(0.),
+        clip_max=float32(1.))
 
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
-    self.assertTrue(np.mean(feed_labs == new_labs) < 0.1)
-
+    self.assertLess(np.mean(feed_labs == new_labs), 0.1)
 
 class TestBasicIterativeMethod(TestFastGradientMethod):
   def setUp(self):
@@ -331,15 +338,22 @@ class TestBasicIterativeMethod(TestFastGradientMethod):
     self.attack = BasicIterativeMethod(self.model, sess=self.sess)
 
   def test_generate_np_gives_adversarial_example_linfinity(self):
-    self.help_generate_np_gives_adversarial_example(ord=np.infty, eps=.5,
+    self.help_generate_np_gives_adversarial_example(ord=np.infty,
+                                                    eps=np.array(.5,
+                                                                 'float32'),
                                                     nb_iter=20)
 
   def test_generate_np_gives_adversarial_example_l1(self):
-    self.help_generate_np_gives_adversarial_example(ord=1, eps=.5,
+    self.help_generate_np_gives_adversarial_example(ord=1,
+                                                    eps=.5,
+                                                    clip_min=0.,
+                                                    clip_max=1.,
                                                     nb_iter=20)
 
   def test_generate_np_gives_adversarial_example_l2(self):
-    self.help_generate_np_gives_adversarial_example(ord=2, eps=.5,
+    self.help_generate_np_gives_adversarial_example(ord=2,
+                                                    eps=np.array(.5,
+                                                                 'float32'),
                                                     nb_iter=20)
 
   def test_do_not_reach_lp_boundary(self):
@@ -350,7 +364,8 @@ class TestBasicIterativeMethod(TestFastGradientMethod):
     """
     for ord in [1, 2, np.infty]:
       _, _, delta = self.generate_adversarial_examples_np(
-          ord=ord, eps=.5, nb_iter=10, eps_iter=.01)
+          ord=ord, eps=np.array(.5, 'float32'), nb_iter=10,
+          eps_iter=np.array(.01, 'float32'))
       self.assertTrue(np.max(0.5 - delta) > 0.25)
 
   def test_attack_strength(self):
@@ -376,8 +391,9 @@ class TestBasicIterativeMethod(TestFastGradientMethod):
     x_val = np.random.rand(100, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    x_adv = self.attack.generate_np(x_val, eps=1.0, ord=np.inf,
-                                    clip_min=-5.0, clip_max=5.0,
+    x_adv = self.attack.generate_np(x_val, eps=float32(1.0), ord=np.inf,
+                                    clip_min=float32(-5.0),
+                                    clip_max=float32(5.0),
                                     nb_iter=10)
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
@@ -393,8 +409,9 @@ class TestBasicIterativeMethod(TestFastGradientMethod):
 
     tf.gradients = fn
 
-    x_adv = self.attack.generate_np(x_val, eps=1.0, ord=np.inf,
-                                    clip_min=-5.0, clip_max=5.0,
+    x_adv = self.attack.generate_np(x_val, eps=float32(1.0), ord=np.inf,
+                                    clip_min=float32(-5.0),
+                                    clip_max=float32(5.0),
                                     nb_iter=11)
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
@@ -419,9 +436,10 @@ class TestMomentumIterativeMethod(TestBasicIterativeMethod):
     x_val = np.array(x_val, dtype=np.float32)
 
     for decay_factor in [0.0, 0.5, 1.0]:
-      x_adv = self.attack.generate_np(x_val, eps=0.5, ord=np.inf,
+      x_adv = self.attack.generate_np(x_val, eps=float32(0.5), ord=np.inf,
                                       decay_factor=decay_factor,
-                                      clip_min=-5.0, clip_max=5.0)
+                                      clip_min=float32(-5.0),
+                                      clip_max=float32(5.0))
 
       delta = np.max(np.abs(x_adv - x_val), axis=1)
       self.assertClose(delta, 0.5)
@@ -442,7 +460,8 @@ class TestCarliniWagnerL2(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=100,
                                     binary_search_steps=3,
                                     initial_const=1,
-                                    clip_min=-5, clip_max=5,
+                                    clip_min=float32(-5),
+                                    clip_max=float32(5),
                                     batch_size=10)
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
@@ -459,7 +478,7 @@ class TestCarliniWagnerL2(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=100,
                                     binary_search_steps=3,
                                     initial_const=1,
-                                    clip_min=-5, clip_max=5,
+                                    clip_min=float32(-5), clip_max=float32(5),
                                     batch_size=100, y_target=feed_labs)
 
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
@@ -481,7 +500,8 @@ class TestCarliniWagnerL2(CleverHansTest):
     x_adv_p = self.attack.generate(x, max_iterations=100,
                                    binary_search_steps=3,
                                    initial_const=1,
-                                   clip_min=-5, clip_max=5,
+                                   clip_min=float32(-5),
+                                   clip_max=float32(5),
                                    batch_size=100, y=y)
     self.assertEqual(x_val.shape, x_adv_p.shape)
     x_adv = self.sess.run(x_adv_p, {x: x_val, y: feed_labs})
@@ -498,7 +518,8 @@ class TestCarliniWagnerL2(CleverHansTest):
                                     binary_search_steps=1,
                                     learning_rate=1e-3,
                                     initial_const=1,
-                                    clip_min=-0.2, clip_max=0.3,
+                                    clip_min=float32(-0.2),
+                                    clip_max=float32(0.3),
                                     batch_size=100)
 
     self.assertTrue(-0.201 < np.min(x_adv))
@@ -520,7 +541,8 @@ class TestCarliniWagnerL2(CleverHansTest):
                                  binary_search_steps=2,
                                  learning_rate=1e-2,
                                  initial_const=1,
-                                 clip_min=-10, clip_max=10,
+                                 clip_min=float32(-10),
+                                 clip_max=float32(10),
                                  confidence=CONFIDENCE,
                                  y_target=feed_labs,
                                  batch_size=10)
@@ -552,7 +574,7 @@ class TestCarliniWagnerL2(CleverHansTest):
                                  binary_search_steps=2,
                                  learning_rate=1e-2,
                                  initial_const=1,
-                                 clip_min=-10, clip_max=10,
+                                 clip_min=float32(-10), clip_max=float32(10),
                                  confidence=CONFIDENCE,
                                  batch_size=10)
 
@@ -582,7 +604,8 @@ class TestElasticNetMethod(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=100,
                                     binary_search_steps=3,
                                     initial_const=1,
-                                    clip_min=-5, clip_max=5,
+                                    clip_min=float32(-5),
+                                    clip_max=float32(5),
                                     batch_size=10)
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
@@ -599,7 +622,7 @@ class TestElasticNetMethod(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=100,
                                     binary_search_steps=3,
                                     initial_const=1,
-                                    clip_min=-5, clip_max=5,
+                                    clip_min=float32(-5), clip_max=float32(5),
                                     batch_size=100, y_target=feed_labs)
 
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
@@ -621,7 +644,7 @@ class TestElasticNetMethod(CleverHansTest):
     x_adv_p = self.attack.generate(x, max_iterations=100,
                                    binary_search_steps=3,
                                    initial_const=1,
-                                   clip_min=-5, clip_max=5,
+                                   clip_min=float32(-5), clip_max=float32(5),
                                    batch_size=100, y=y)
     self.assertEqual(x_val.shape, x_adv_p.shape)
     x_adv = self.sess.run(x_adv_p, {x: x_val, y: feed_labs})
@@ -638,7 +661,8 @@ class TestElasticNetMethod(CleverHansTest):
                                     binary_search_steps=1,
                                     learning_rate=1e-3,
                                     initial_const=1,
-                                    clip_min=-0.2, clip_max=0.3,
+                                    clip_min=float32(-0.2),
+                                    clip_max=float32(0.3),
                                     batch_size=100)
 
     self.assertTrue(-0.201 < np.min(x_adv))
@@ -660,7 +684,7 @@ class TestElasticNetMethod(CleverHansTest):
                                  binary_search_steps=2,
                                  learning_rate=1e-2,
                                  initial_const=1,
-                                 clip_min=-10, clip_max=10,
+                                 clip_min=float32(-10), clip_max=float32(10),
                                  confidence=CONFIDENCE,
                                  y_target=feed_labs,
                                  batch_size=10)
@@ -692,7 +716,7 @@ class TestElasticNetMethod(CleverHansTest):
                                  binary_search_steps=2,
                                  learning_rate=1e-2,
                                  initial_const=1,
-                                 clip_min=-10, clip_max=10,
+                                 clip_min=float32(-10), clip_max=float32(10),
                                  confidence=CONFIDENCE,
                                  batch_size=10)
 
@@ -727,10 +751,11 @@ class TestSaliencyMapMethod(CleverHansTest):
     x_val = np.random.rand(10, 1000)
     x_val = np.array(x_val, dtype=np.float32)
 
-    feed_labs = np.zeros((10, 10))
+    feed_labs = np.zeros((10, 10), dtype=np.float32)
     feed_labs[np.arange(10), np.random.randint(0, 9, 10)] = 1
     x_adv = self.attack.generate_np(x_val,
-                                    clip_min=-5., clip_max=5.,
+                                    clip_min=float32(-5.),
+                                    clip_max=float32(5.),
                                     y_target=feed_labs)
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
 
@@ -751,8 +776,8 @@ class TestDeepFool(CleverHansTest):
     x_val = np.array(x_val, dtype=np.float32)
 
     x_adv = self.attack.generate_np(x_val, over_shoot=0.02, max_iter=50,
-                                    nb_candidate=2, clip_min=-5,
-                                    clip_max=5)
+                                    nb_candidate=2, clip_min=float32(-5),
+                                    clip_max=float32(5))
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
@@ -767,7 +792,7 @@ class TestDeepFool(CleverHansTest):
     x = tf.placeholder(tf.float32, x_val.shape)
 
     x_adv_p = self.attack.generate(x, over_shoot=0.02, max_iter=50,
-                                   nb_candidate=2, clip_min=-5, clip_max=5)
+                                   nb_candidate=2, clip_min=float32(-5), clip_max=float32(5))
     self.assertEqual(x_val.shape, x_adv_p.shape)
     x_adv = self.sess.run(x_adv_p, {x: x_val})
 
@@ -780,8 +805,8 @@ class TestDeepFool(CleverHansTest):
     x_val = np.array(x_val, dtype=np.float32)
 
     x_adv = self.attack.generate_np(x_val, over_shoot=0.02, max_iter=50,
-                                    nb_candidate=2, clip_min=-0.2,
-                                    clip_max=0.3)
+                                    nb_candidate=2, clip_min=float32(-0.2),
+                                    clip_max=float32(0.3))
 
     self.assertTrue(-0.201 < np.min(x_adv))
     self.assertTrue(np.max(x_adv) < .301)
@@ -804,8 +829,10 @@ class TestMadryEtAl(CleverHansTest):
     x_val = np.random.rand(100, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    x_adv = self.attack.generate_np(x_val, eps=1.0, eps_iter=0.05,
-                                    clip_min=0.5, clip_max=0.7,
+    x_adv = self.attack.generate_np(x_val, eps=float32(1.0),
+                                    eps_iter=float32(0.05),
+                                    clip_min=float32(0.5),
+                                    clip_max=float32(0.7),
                                     nb_iter=5, sanity_checks=False)
 
     orig_labs = np.argmax(self.sess.run(self.model(x_val)), axis=1)
@@ -816,7 +843,8 @@ class TestMadryEtAl(CleverHansTest):
     x_val = np.random.rand(100, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    x_adv = self.attack.generate_np(x_val, eps=1.0, eps_iter=0.1,
+    x_adv = self.attack.generate_np(x_val, eps=float32(1.0),
+                                    eps_iter=float32(0.1),
                                     nb_iter=5)
 
     delta = np.max(np.abs(x_adv - x_val), axis=1)
@@ -826,9 +854,11 @@ class TestMadryEtAl(CleverHansTest):
     x_val = np.random.rand(100, 2)
     x_val = np.array(x_val, dtype=np.float32)
 
-    x_adv = self.attack.generate_np(x_val, eps=1.0, eps_iter=0.1,
+    x_adv = self.attack.generate_np(x_val, eps=float32(1.0),
+                                    eps_iter=float32(0.1),
                                     nb_iter=5,
-                                    clip_min=-0.2, clip_max=0.3,
+                                    clip_min=float32(-0.2),
+                                    clip_max=float32(0.3),
                                     sanity_checks=False)
 
     self.assertLess(-0.201, np.min(x_adv))
@@ -850,8 +880,10 @@ class TestMadryEtAl(CleverHansTest):
 
     # Generate multiple adversarial examples
     for i in range(10):
-      x_adv = self.attack.generate_np(x_val, eps=.5, eps_iter=0.05,
-                                      clip_min=0.5, clip_max=0.7,
+      x_adv = self.attack.generate_np(x_val, eps=np.array(.5, 'float32'),
+                                      eps_iter=np.array(0.05, 'float32'),
+                                      clip_min=np.array(0.5, 'float32'),
+                                      clip_max=np.array(0.7, 'float32'),
                                       nb_iter=2, sanity_checks=False)
       new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
 
@@ -933,8 +965,8 @@ class TestFastFeatureAdversaries(CleverHansTest):
     x_guide = tf.abs(tf.random_uniform(input_shape, 0., 1.))
 
     layer = 'fc7'
-    attack_params = {'eps': 5. / 256, 'clip_min': 0., 'clip_max': 1.,
-                     'nb_iter': 10, 'eps_iter': 0.005,
+    attack_params = {'eps': float32(5. / 256), 'clip_min': float32(0.), 'clip_max': 1.,
+                     'nb_iter': 10, 'eps_iter': float32(0.005),
                      'layer': layer}
     x_adv = self.attack.generate(x_src, x_guide, **attack_params)
     h_adv = self.model.fprop(x_adv)[layer]
@@ -976,7 +1008,7 @@ class TestLBFGS(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=100,
                                     binary_search_steps=3,
                                     initial_const=1,
-                                    clip_min=-5, clip_max=5,
+                                    clip_min=float32(-5), clip_max=float32(5),
                                     batch_size=100, y_target=feed_labs)
 
     new_labs = np.argmax(self.sess.run(self.model(x_adv)), axis=1)
@@ -996,7 +1028,7 @@ class TestLBFGS(CleverHansTest):
     x_adv_p = self.attack.generate(x, max_iterations=100,
                                    binary_search_steps=3,
                                    initial_const=1,
-                                   clip_min=-5, clip_max=5,
+                                   clip_min=float32(-5), clip_max=float32(5),
                                    batch_size=100, y_target=y)
     self.assertEqual(x_val.shape, x_adv_p.shape)
     x_adv = self.sess.run(x_adv_p, {x: x_val, y: feed_labs})
@@ -1015,7 +1047,7 @@ class TestLBFGS(CleverHansTest):
     x_adv = self.attack.generate_np(x_val, max_iterations=10,
                                     binary_search_steps=1,
                                     initial_const=1,
-                                    clip_min=-0.2, clip_max=0.3,
+                                    clip_min=float32(-0.2), clip_max=float32(0.3),
                                     batch_size=100, y_target=feed_labs)
 
     self.assertTrue(-0.201 < np.min(x_adv))

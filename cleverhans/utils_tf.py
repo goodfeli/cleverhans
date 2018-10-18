@@ -535,7 +535,20 @@ def clip_by_value(t, clip_value_min, clip_value_max, name=None):
   def cast_clip(clip):
     if t.dtype in (tf.float32, tf.float64):
       if hasattr(clip, 'dtype'):
-        if clip.dtype != t.dtype:
+        clip_dtype = clip.dtype
+        t_dtype = t.dtype
+        # Sometimes numpy and tensorflow types can't be compared, so we convert
+        # them both to tf
+        clip_dtype = tf.as_dtype(clip_dtype)
+        t_dtype = tf.as_dtype(t_dtype)
+
+        try:
+          match = clip_dtype == t_dtype
+        except TypeError:
+          raise TypeError("Could not compare " + str(clip_dtype) + " of type "
+                          + str(type(clip_dtype)) + " and " + str(t_dtype) +
+                          " of type " + str(type(t_dtype)))
+        if not match:
           return tf.cast(clip, t.dtype)
     return clip
 

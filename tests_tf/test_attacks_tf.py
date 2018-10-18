@@ -85,7 +85,8 @@ class TestAttackTF(CleverHansTest):
 
       labels = tf.stop_gradient(tf.argmax(init_model_logits, axis=1))
 
-    def _project_perturbation(perturbation, epsilon, input_image):
+    def _project_perturbation(perturbation, epsilon, input_image,
+                              clip_min, clip_max):
       clipped_perturbation = tf.clip_by_value(perturbation, -epsilon,
                                               epsilon)
       new_image = tf.clip_by_value(input_image + clipped_perturbation,
@@ -99,6 +100,8 @@ class TestAttackTF(CleverHansTest):
         epsilon=epsilon,
         num_steps=nb_iters,
         optimizer=unrolled_optimizer,
+        clip_min=clip_min,
+        clip_max=clip_max,
         project_perturbation=_project_perturbation)
 
     final_model_output = self.model.fprop(x_adv)
