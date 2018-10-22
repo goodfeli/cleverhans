@@ -1740,12 +1740,14 @@ def _project_perturbation(perturbation, epsilon, input_image, clip_min=None,
 
   # Ensure inputs are in the correct range
   with tf.control_dependencies([
-      utils_tf.assert_less_equal(input_image, clip_max),
-      utils_tf.assert_greater_equal(input_image, clip_min)
+      utils_tf.assert_less_equal(input_image,
+                                 tf.cast(clip_max, input_image.dtype)),
+      utils_tf.assert_greater_equal(input_image,
+                                    tf.cast(clip_min, input_image.dtype))
   ]):
     clipped_perturbation = utils_tf.clip_by_value(
         perturbation, -epsilon, epsilon)
-    new_image = tf.clip_by_value(
+    new_image = utils_tf.clip_by_value(
         input_image + clipped_perturbation, clip_min, clip_max)
     return new_image - input_image
 
@@ -1867,8 +1869,12 @@ def pgd_attack(loss_fn,
 
   if clip_min is None or clip_max is None:
     raise NotImplementedError("SPSA only supports clipping for now")
-  check_range = [utils_tf.assert_less_equal(input_image, clip_max),
-                 utils_tf.assert_greater_equal(input_image, clip_min)]
+  check_range = [utils_tf.assert_less_equal(input_image,
+                                            tf.cast(clip_max,
+                                                    input_image.dtype)),
+                 utils_tf.assert_greater_equal(input_image,
+                                               tf.cast(clip_min,
+                                                       input_image.dtype))]
 
   with tf.control_dependencies([check_diff] + check_range):
     adversarial_image = input_image + final_perturbation

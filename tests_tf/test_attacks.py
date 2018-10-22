@@ -346,8 +346,6 @@ class TestBasicIterativeMethod(TestFastGradientMethod):
   def test_generate_np_gives_adversarial_example_l1(self):
     self.help_generate_np_gives_adversarial_example(ord=1,
                                                     eps=.5,
-                                                    clip_min=0.,
-                                                    clip_max=1.,
                                                     nb_iter=20)
 
   def test_generate_np_gives_adversarial_example_l2(self):
